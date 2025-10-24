@@ -1,0 +1,208 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ====================================================================
+// 1 USER MODEL
+// ====================================================================
+model User {
+  id             Int          @id @default(autoincrement())
+  email          String       @unique
+  phone          String       @unique
+  passwordHash   String
+  name           String?      // Name made optional
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relationships
+  favorites      Product[]    @relation("UserFavorites") // Many-to-Many through implicit table
+  reviews        Review[]     // One-to-Many relation to the Review model
+}
+
+// ====================================================================
+// 2 SHOP MODEL
+// ====================================================================
+model Shop {
+  id             Int               @id @default(autoincrement())
+  name           String            @unique // Assuming the shop name itself should be unique
+  email          String            @unique
+  phone          String            @unique
+  passwordHash   String
+  ownerName      String?           // Made optional
+  address        String?           // Made optional
+  city           String?           // Made optional
+  state          String?           // Made optional
+  country        String?           // Made optional
+  pinCode        String?           // Changed to String to handle leading zeros, etc.
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  // Relationships
+  priceRecords   PriceRecord[]     // One-to-Many relation to PriceRecord
+  reviews        Review[]          // One-to-Many relation to Review
+  favorites      Product[]         @relation("ShopFavorites") // Many-to-Many through implicit table
+  subscriptions  SubscriptionHistory[] // One-to-Many relation to SubscriptionHistory
+}
+
+// ====================================================================
+// 3 CATEGORY MODEL
+// ====================================================================
+model Category {
+  id             Int       @id @default(autoincrement())
+  name           String    @unique
+  slug           String    @unique // URL-friendly name
+  createdAt      DateTime  @default(now())
+
+  // Relationships
+  products       Product[] // One-to-Many relation to Product
+}
+
+// ====================================================================
+// 4 PRODUCT MODEL
+// ====================================================================
+model Product {
+  id             Int           @id @default(autoincrement())
+  name           String        @unique
+  modelNumber    String?       @unique // Added for better comparison accuracy (Optional but unique)
+  imageUrl       String?       // Made optional
+  description    String?       // Made optional
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // Foreign Key to Category
+  categoryId     Int
+  category       Category      @relation(fields: [categoryId], references: [id])
+
+  // Relationships
+  prices         PriceRecord[] // One-to-Many relation to PriceRecord
+  reviews        Review[]      // One-to-Many relation to Review
+
+  // Implicit Many-to-Many Tables defined on User and Shop
+  favoritedByUsers User[]      @relation("UserFavorites")
+  favoritedByShops Shop[]      @relation("ShopFavorites")
+}
+
+// ====================================================================
+// 5 PRICERECORD MODEL (The core comparison data)
+// ====================================================================
+model PriceRecord {
+  id          Int      @id @default(autoincrement())
+  price       Float    // Base price
+  discount    Float    @default(0.0) // Discount amount or percentage (assuming amount)
+  total       Float    // Final price after discount (should be calculated price - discount)
+  inStock     Boolean  // Availability status
+  productUrl  String?  // Direct URL to the product on the shop's site
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt // Essential for freshness
+
+  // Foreign Keys
+  productId   Int
+  shopId      Int
+
+  // Relation Fields
+  product     Product  @relation(fields: [productId], references: [id])
+  shop        Shop     @relation(fields: [shopId], references: [id])
+
+  // CRUCIAL: Ensures one price entry per product per shop
+  @@unique([productId, shopId])
+}
+
+// ====================================================================
+// 6 REVIEW MODEL (Product/Shop/User combination)
+// ====================================================================
+model Review {
+  id             Int      @id @default(autoincrement())
+  rating         Int
+  comment        String?  // Made optional
+  createdAt      DateTime @default(now())
+
+  // Note: The 'total' field in your table seems out of place here (it belongs in PriceRecord/Order). 
+  // It has been omitted from the Review model as a best practice.
+
+  // Foreign Keys
+  productId      Int
+  userId         Int
+  shopId         Int
+
+  // Relation Fields
+  product        Product  @relation(fields: [productId], references: [id])
+  user           User     @relation(fields: [userId], references: [id])
+  shop           Shop     @relation(fields: [shopId], references: [id])
+
+  // CRUCIAL: Constraint allowing one review per User-Product-Shop combination
+  @@unique([userId, productId, shopId])
+}
+
+
+// ====================================================================
+// 7 SUBSCRIPTION PLAN MODEL
+// ====================================================================
+model SubscriptionPlan {
+  id              Int               @id @default(autoincrement())
+  name            String            @unique
+  amount          Float
+  validityDays    Int               // Renamed from 'validity' to be explicit: validity in days (Int)
+  description     String?           // Added for clarity on what the plan offers
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  adminId         Int?
+
+  // Relationships
+  history         SubscriptionHistory[]
+createdByAdmin  Admin?            @relation("AdminCreatedPlans", fields: [adminId], references: [id]) 
+}
+
+
+// ====================================================================
+// 8 SUBSCRIPTION HISTORY MODEL
+// ====================================================================
+model SubscriptionHistory {
+  id              Int              @id @default(autoincrement())
+  orderId         String           @unique // Unique ID from payment gateway
+  amountPaid      Float
+  paymentDate     DateTime
+  startDate       DateTime
+  endDate         DateTime         // Calculated date based on startDate + plan validity
+  createdAt       DateTime         @default(now())
+
+  // Foreign Keys
+  planId          Int
+  shopId          Int
+
+  createdById     Int?             // Nullable in case plan was added via seed script
+  createdBy       Admin?           @relation("AdminSubscriptionHistory", fields: [createdById], references: [id]) 
+
+  // Relation Fields
+  plan            SubscriptionPlan @relation(fields: [planId], references: [id])
+  shop            Shop             @relation(fields: [shopId], references: [id])
+}
+
+// ====================================================================
+// 9 ADMIN MODEL
+// ====================================================================
+model Admin {
+  id              Int                 @id @default(autoincrement())
+  name            String
+  email           String              @unique
+  phone           String?             @unique
+  passwordHash    String
+  role            String              @default("admin") // Could be 'admin' or 'superadmin'
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // Relationships
+  createdHistory  SubscriptionHistory[] @relation("AdminSubscriptionHistory")
+  createdPlans    SubscriptionPlan[]  @relation("AdminCreatedPlans") 
+}
