@@ -33,11 +33,10 @@ async function adminAuthMiddleware(request: Request, response: Response, next:Ne
  
     const admin = await prisma.admin.findUnique({
         where: { id: decodedPayload.adminId },
-
         select: { id: true, email: true, role: true, name: true } 
     });
-    //check if admin exists and has appropriate role
-    if (!admin || admin.role !== 'admin' && admin.role !== 'super_admin') {
+
+    if (!admin) {
         return response.status(403).json({ message: 'Forbidden: Insufficient privileges.'});
     }
 
