@@ -472,3 +472,68 @@ export async function updateAdminPassword(request: Request, response: Response) 
         return response.status(500).json({ message: 'Internal server error' });
     }
 }
+
+/**
+ * Delete admin by ID
+ */
+export async function deleteAdminById(request: Request, response: Response) {
+    let adminId: number;
+    
+    try {
+        const parsedParams = idParamSchema.parse(request.params);
+        adminId = parsedParams.id;
+    } catch (error) {
+        if (error instanceof ZodError) {
+            const validationErrors = error.issues.map((err) => err.message);
+            return response.status(400).json({ message: 'Validation errors', errors: validationErrors });
+        } else {
+            console.error('Delete admin by ID validation fatal error:', error);
+            return response.status(500).json({ message: 'Internal server error' });
+        }
+    }
+
+    try {
+        const existingAdmin = await prisma.admin.findUnique({ where: { id: adminId } });
+
+        if (!existingAdmin) {
+            return response.status(404).json({ message: 'Admin not found' });
+        }
+
+        //check role hierarchy
+        const requestingAdminRole = request.admin?.role;
+        const targetAdminRole = existingAdmin.role;
+
+        const roleHierarchy: Record<string, number> = {
+            'super_admin': 3,
+            'admin': 2,
+            'moderator': 1,
+        };
+
+        if (requestingAdminRole !== 'super_admin') {
+            if (requestingAdminRole === 'admin') {
+                if (targetAdminRole !== 'moderator') {
+                    return response.status(403).json({
+                        message: 'Forbidden: Admins can only delete moderators.',
+                    });
+                }
+            } else {
+                return response.status(403).json({
+                    message: 'Forbidden: You do not have permission to delete admins.',
+                });
+            }
+        }
+
+        if (request.admin?.id === adminId) {
+            return response.status(403).json({
+                message: 'Forbidden: You cannot delete your own admin account.',
+            });
+        }
+
+        await prisma.admin.delete({ where: { id: adminId } });
+
+        return response.status(200).json({ message: 'Admin deleted successfully' });
+    } catch (error) {
+        console.error('Delete admin by ID fatal error:', error);
+        return response.status(500).json({ message: 'Internal server error' });
+    }
+}

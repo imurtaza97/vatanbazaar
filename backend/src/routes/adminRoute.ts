@@ -1,7 +1,7 @@
 // /src/routes/adminRoute.ts
 
 import { Router } from 'express';
-import { adminLogin, adminLogout, getAdminById, getAdminList, registerAdmin, updateAdminDetails, updateAdminPassword } from '../controllers/adminController';
+import { adminLogin, adminLogout, deleteAdminById, getAdminById, getAdminList, registerAdmin, updateAdminDetails, updateAdminPassword } from '../controllers/adminController';
 import { adminRefreshToken } from '../controllers/adminRefreshController';
 import { adminAuthMiddleware } from '../middleware/adminAuthMiddleware';
 import { adminRoleAuthMiddleware } from '../middleware/adminRoleAuthMiddleware';
@@ -31,5 +31,8 @@ router.put('/update/:id', adminAuthMiddleware, adminRoleAuthMiddleware(['super_a
 
 // Update admin Password by id route
 router.put('/update-password/:id', adminAuthMiddleware, adminRoleAuthMiddleware(['super_admin','admin','moderator']), updateAdminPassword);
+
+// Delete admin route
+router.delete('/delete/:id', adminAuthMiddleware, adminRoleAuthMiddleware(['super_admin','admin']), deleteAdminById);
 
 export default router;
